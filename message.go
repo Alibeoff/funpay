@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -58,7 +59,7 @@ func (fp *Funpay) GetAllUnreadMessagesHTML(link string) error {
 	html, err := ds.Html()
 	cleaned := CleanHTML(html)
 	// fmt.Println(cleaned)
-	fp.NewMessages(cleaned)
+	fp.NewMessages(cleaned, link)
 	//TODO: Прописать логику консольлога нового собщения только новых!!!!
 	/*
 		Для этого разделяем весь файл на список формируем слайс структуры сообщение.чат по которой проходимся
@@ -83,6 +84,10 @@ func (fp *Funpay) GetMessageInfo(doc *goquery.Document) error {
 	for _, item := range items {
 		nmsg := "no found"
 		if !item.isRead {
+			if err != nil {
+				fmt.Println("Некорректный id:", err)
+				return err
+			}
 			fp.GetAllUnreadMessagesHTML(item.Link)
 			nmsg = "found"
 		}
@@ -104,15 +109,17 @@ func (fp *Funpay) ParseChat(chat Chat) {
 	}
 
 	err = json.Unmarshal(data, &chats)
+
+	idInt, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		fmt.Println("Некорректный id:", err)
+		return
+	}
+
 	if err != nil {
 		fmt.Println("no file data", err)
-		fp.AddChat(id, chat)
+		fp.AddChat(idInt, chat)
 	} else {
-		idInt, err := strconv.ParseInt(id, 10, 64)
-		if err != nil {
-			fmt.Println("Некорректный id:", err)
-			return
-		}
 
 		found := false
 
@@ -124,20 +131,77 @@ func (fp *Funpay) ParseChat(chat Chat) {
 		}
 
 		if !found {
-			fp.AddChat(id, chat)
+			idInt, err := strconv.ParseInt(id, 10, 64)
+			if err != nil {
+				fmt.Println("Некорректный id:", err)
+				return
+			}
+			fp.AddChat(idInt, chat)
 		}
 	}
 }
 
-func (fp *Funpay) NewMessages(html string) {
+func (fp *Funpay) NewMessages(html, link string) {
+	var chat Chat
+	q, _ := url.Parse(link)
+	id := q.Query().Get("node")
 	msgs, err := fp.ParseAllMessagesFromChat(html)
+	msgID, err := strconv.ParseInt(msgs[len(msgs)-1].ID, 10, 64)
+	IntID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		log.Println(err)
 	}
-	fmt.Println(msgs)
+	chat.ID = IntID
+	chat.LastMessage = msgID
+	chat.MessageList = msgs
+	fp.UpdateChat(chat)
 }
 
-func (fp *Funpay) AddChat(id string, chat Chat) error {
+func (fp *Funpay) UpdateChat(chat Chat) error {
+	const op = "Funpay.UpdateChat"
+
+	data, err := os.ReadFile("chats.json")
+	if err != nil {
+		fmt.Println("Error read file:", err)
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	err = json.Unmarshal(data, &chats)
+	if err != nil {
+		fmt.Println("no file data", err)
+		fp.AddChat(chat.ID, chat)
+	}
+	// fmt.Println("JSON: ", chats, "\nКонец JSON")
+	for i, readChat := range chats {
+		fmt.Println(readChat.ID, "=", chat.ID)
+		if readChat.ID == chat.ID {
+			fmt.Println(readChat.ID, "Все работает, ищи проблему ниже")
+			chats[i].LastMessage = chat.LastMessage
+			chats[i].MessageList = append(chats[i].MessageList, chat.MessageList...)
+		}
+	}
+	fmt.Println(chats[0])
+	file, err := os.Create("chats.json")
+	if err != nil {
+		fmt.Println("Ошибка при создании файла:", err)
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	defer file.Close()
+
+	// Кодируем слайс в JSON и записываем в файл с отступами для читаемости
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ") // Отступы для удобного чтения
+
+	if err := encoder.Encode(chats); err != nil {
+		fmt.Println("Ошибка при кодировании JSON:", err)
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	fmt.Println("Данные успешно сохранены в chats.json")
+	return nil
+}
+
+func (fp *Funpay) AddChat(id int64, chat Chat) error {
 	const op = "Funpay.AddChat"
 	doc, err := fp.RequestHTML(context.Background(), chat.Link)
 	if err != nil {
@@ -170,7 +234,6 @@ func (fp *Funpay) AddChat(id string, chat Chat) error {
 		// Добавляем сообщение в список
 		chat.MessageList = append(chat.MessageList, msg)
 		MsgID, err := strconv.Atoi(msg.ID)
-		id, err := strconv.Atoi(id)
 		if err != nil {
 			return
 		}
