@@ -20,4 +20,5 @@ func main() {
 		log.Println(err)
 		return
 	}
+	err = ss.SendMessage("171080024", "Hello Body!")
 }

@@ -1,10 +1,13 @@
 package funpay
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"regexp"
@@ -14,25 +17,25 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-type Chat struct {
-	ID          int64
-	UserName    string
-	Link        string
-	LastMessage int64
-	isRead      bool
-	MessageList []Message
-	NewMessage  []Message
-}
-
-type Message struct {
-	ID       string
-	Author   string
-	DateTime string
-	Text     string
-}
+// type Chat struct {
+// 	ID          int64
+// 	UserName    string
+// 	Link        string
+// 	LastMessage int64
+// 	isRead      bool
+// 	MessageList []Message
+// 	NewMessage  []Message
+// }
+//
+// type Message struct {
+// 	ID       string
+// 	Author   string
+// 	DateTime string
+// 	Text     string
+// }
 
 // id -yes name -yes link yes lastMessage - yes isread - nil messagelist new message - nil
-var chats []Chat
+// var chats []Chat
 
 // Method to do GET response for getting HTML page code
 func (fp *Funpay) GetAllMessages(ctx context.Context) error {
@@ -57,14 +60,12 @@ func (fp *Funpay) GetAllUnreadMessagesHTML(link string) error {
 	}
 	ds := resp.Find(".chat-message-list")
 	html, err := ds.Html()
+	rs, err := ds.Html()
 	cleaned := CleanHTML(html)
+	clar := CleanHTML(rs)
+	fmt.Println(clar)
 	// fmt.Println(cleaned)
 	fp.NewMessages(cleaned, link)
-	//TODO: Прописать логику консольлога нового собщения только новых!!!!
-	/*
-		Для этого разделяем весь файл на список формируем слайс структуры сообщение.чат по которой проходимся
-		в поиске прочитанного сообщения. после чего устанавливаем значение показа сообщений на тру и показваем все сообщения в консоли!!!
-	*/
 	return nil
 }
 
@@ -154,7 +155,42 @@ func (fp *Funpay) NewMessages(html, link string) {
 	chat.ID = IntID
 	chat.LastMessage = msgID
 	chat.MessageList = msgs
+	fp.GetNewMessages(chat)
 	fp.UpdateChat(chat)
+}
+
+func (fp *Funpay) GetNewMessages(chat Chat) {
+	// Читаем файл chats.json
+	data, err := os.ReadFile("chats.json")
+	if err != nil {
+		fmt.Println("Error read file:", err)
+		return
+	}
+	var item Chat
+	var index int
+	found := false
+	err = json.Unmarshal(data, &chats)
+
+	for i, it := range chats {
+		if it.ID == chat.ID {
+			item = it
+			index = i
+			break
+		}
+	}
+
+	for i, msg := range chat.MessageList {
+		idD, _ := strconv.ParseInt(msg.ID, 10, 64)
+		if item.LastMessage == idD {
+			fmt.Println("nead id")
+			found = true
+		}
+		if found {
+			fmt.Println("nead id", i)
+			chats[index].NewMessage = append(chats[index].NewMessage, msg)
+		}
+	}
+	fmt.Println(chats[index].NewMessage)
 }
 
 func (fp *Funpay) UpdateChat(chat Chat) error {
@@ -173,14 +209,12 @@ func (fp *Funpay) UpdateChat(chat Chat) error {
 	}
 	// fmt.Println("JSON: ", chats, "\nКонец JSON")
 	for i, readChat := range chats {
-		fmt.Println(readChat.ID, "=", chat.ID)
 		if readChat.ID == chat.ID {
-			fmt.Println(readChat.ID, "Все работает, ищи проблему ниже")
 			chats[i].LastMessage = chat.LastMessage
 			chats[i].MessageList = append(chats[i].MessageList, chat.MessageList...)
 		}
 	}
-	fmt.Println(chats[0])
+
 	file, err := os.Create("chats.json")
 	if err != nil {
 		fmt.Println("Ошибка при создании файла:", err)
@@ -190,9 +224,9 @@ func (fp *Funpay) UpdateChat(chat Chat) error {
 
 	// Кодируем слайс в JSON и записываем в файл с отступами для читаемости
 	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ") // Отступы для удобного чтения
-
-	if err := encoder.Encode(chats); err != nil {
+	encoder.SetIndent("", "  ")                 // Отступы для удобного чтения
+	cleanedChats := removeDuplicateChats(chats) // очищаем повторения
+	if err := encoder.Encode(cleanedChats); err != nil {
 		fmt.Println("Ошибка при кодировании JSON:", err)
 		return fmt.Errorf("%s: %w", op, err)
 	}
@@ -246,7 +280,7 @@ func (fp *Funpay) AddChat(id int64, chat Chat) error {
 	})
 
 	chats = append(chats, chat)
-	fmt.Println(chats)
+	// fmt.Println(chats)
 
 	file, err := os.Create("chats.json")
 	if err != nil {
@@ -265,6 +299,66 @@ func (fp *Funpay) AddChat(id int64, chat Chat) error {
 	}
 
 	fmt.Println("Данные успешно сохранены в chats.json")
+	return nil
+}
+
+func (fp *Funpay) ParseChatName(funpayChatID string) (string, error) {
+	link := fp.baseURL + "/chat/?node=" + funpayChatID
+	doc, err := fp.RequestHTML(context.Background(), link)
+	if err != nil {
+		return "", err
+	}
+	// Парсим HTML через goquery
+
+	// Ищем нужный div
+	selector := fmt.Sprintf(`div.chat.chat-float[data-id="%s"]`, funpayChatID)
+	chatDiv := doc.Find(selector)
+	if chatDiv.Length() == 0 {
+		return "", fmt.Errorf("div not found")
+	}
+
+	chatName, exists := chatDiv.Attr("data-name")
+	if !exists {
+		return "", fmt.Errorf("data-name attribute not found")
+	}
+
+	return chatName, nil
+}
+
+func (fp *Funpay) SendMessage(chatID, message string) error {
+	chatName, err := fp.ParseChatName(chatID)
+	if err != nil {
+		log.Println(err)
+	}
+	postURL := fp.baseURL + "/runner/"
+	requestData := map[string]any{
+		"node":         chatName,
+		"last_message": -1,
+		"content":      message,
+	}
+	r := map[string]any{
+		"action": "chat_message",
+		"data":   requestData,
+	}
+	postBody, _ := json.Marshal(r)
+	body := url.Values{}
+	body.Set("objects", "[]")
+	body.Set("request", string(postBody))
+	body.Set("csrf_token", fp.CSRFToken())
+	resp, err := fp.Request(context.Background(), postURL, RequestWithMethod(http.MethodPost), RequestWithBody(bytes.NewBufferString(body.Encode())), RequestWithHeaders(map[string]string{
+		"content-type":     "application/x-www-form-urlencoded; charset=UTF-8",
+		"accept":           "*/*",
+		"x-requested-with": "XMLHttpRequest",
+	}),
+	)
+	if err != nil {
+		return err
+	}
+	html, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(html))
 	return nil
 }
 
@@ -362,4 +456,30 @@ func CleanHTML(html string) string {
 	html = strings.TrimSpace(html)
 
 	return html
+}
+
+func removeDuplicateMessages(messages []Message) []Message {
+	seen := make(map[string]bool)
+	result := make([]Message, 0, len(messages))
+	for _, msg := range messages {
+		if !seen[msg.ID] {
+			seen[msg.ID] = true
+			result = append(result, msg)
+		}
+	}
+	return result
+}
+
+func removeDuplicateChats(chats []Chat) []Chat {
+	seen := make(map[int64]bool)
+	result := make([]Chat, 0, len(chats))
+	for _, chat := range chats {
+		if !seen[chat.ID] {
+			seen[chat.ID] = true
+			// Чистим MessageList
+			chat.MessageList = removeDuplicateMessages(chat.MessageList)
+			result = append(result, chat)
+		}
+	}
+	return result
 }

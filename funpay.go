@@ -23,7 +23,7 @@ const (
 type Funpay struct {
 	account   *account
 	lots      *lots
-	msg       []Chat
+	chats     []Chat
 	csrfToken string
 	baseURL   string
 	cookies   []*http.Cookie
