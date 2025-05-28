@@ -14,11 +14,12 @@ func main() {
 		log.Println(err)
 		return
 	}
-	err = ss.GetAllMessages(context.Background())
+	err = ss.UpdateChatList(context.Background())
+
 	// msgs := ss.NewMessages()
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	err = ss.SendMessage("171080024", "Hello Body!")
+	// err = ss.SendMessage("171080024", "Hello Body!")
 }

@@ -35,7 +35,7 @@ import (
 // }
 
 // id -yes name -yes link yes lastMessage - yes isread - nil messagelist new message - nil
-// var chats []Chat
+var chats []Chat
 
 // Method to do GET response for getting HTML page code
 func (fp *Funpay) GetAllMessages(ctx context.Context) error {
