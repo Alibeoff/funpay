@@ -154,8 +154,8 @@ func TestFunpay_Request(t *testing.T) {
 			t.Fatalf("Update failed: %v", err)
 		}
 
-		if fp.Account().Locale() != funpay.LocaleEN {
-			t.Fatalf("expected locale EN, got %v", fp.Account().Locale())
+		if fp.Locale() != funpay.LocaleEN {
+			t.Fatalf("expected locale EN, got %v", fp.Locale())
 		}
 
 		testTS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -423,16 +423,16 @@ func TestFunpay_RequestHTML(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if fp.Account().ID() != 123 {
-			t.Errorf("expected userID 123, got %d", fp.Account().ID())
+		if fp.UserID() != 123 {
+			t.Errorf("expected userID 123, got %d", fp.UserID())
 		}
 
-		if fp.Account().Username() != "testuser" {
-			t.Errorf("expected username 'testuser', got %q", fp.Account().Username())
+		if fp.Username() != "testuser" {
+			t.Errorf("expected username 'testuser', got %q", fp.Username())
 		}
 
-		if fp.Account().Balance() != 100 {
-			t.Errorf("expected balance 100, got %d", fp.Account().Balance())
+		if fp.Balance() != 100 {
+			t.Errorf("expected balance 100, got %d", fp.Balance())
 		}
 
 		if doc == nil {
@@ -532,20 +532,20 @@ func TestFunpay_RequestHTML(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if fp.Account().ID() != 456 {
-			t.Errorf("expected userID 456, got %d", fp.Account().ID())
+		if fp.UserID() != 456 {
+			t.Errorf("expected userID 456, got %d", fp.UserID())
 		}
 
-		if fp.Account().Username() != "updated_user" {
-			t.Errorf("expected username 'updated_user', got %q", fp.Account().Username())
+		if fp.Username() != "updated_user" {
+			t.Errorf("expected username 'updated_user', got %q", fp.Username())
 		}
 
-		if fp.Account().Balance() != 200 {
-			t.Errorf("expected balance 200, got %d", fp.Account().Balance())
+		if fp.Balance() != 200 {
+			t.Errorf("expected balance 200, got %d", fp.Balance())
 		}
 
-		if fp.Account().Locale() != funpay.LocaleEN {
-			t.Errorf("expected locale EN, got %v", fp.Account().Locale())
+		if fp.Locale() != funpay.LocaleEN {
+			t.Errorf("expected locale EN, got %v", fp.Locale())
 		}
 	})
 }
@@ -597,8 +597,8 @@ func TestFunpay_UpdateLocale(t *testing.T) {
 			t.Fatalf("UpdateLocale failed: %v", err)
 		}
 
-		if fp.Account().Locale() != funpay.LocaleEN {
-			t.Errorf("expected locale EN, got %v", fp.Account().Locale())
+		if fp.Locale() != funpay.LocaleEN {
+			t.Errorf("expected locale EN, got %v", fp.Locale())
 		}
 	})
 
